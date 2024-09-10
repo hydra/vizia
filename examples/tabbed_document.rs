@@ -5,12 +5,21 @@ use crate::document::Document;
 use crate::tabbed_ui::{DocumentTab, HomeTab, TabKind};
 
 mod document {
-    use vizia_core::prelude::Data;
+    use vizia::prelude::*;
 
     #[derive(Clone, Data)]
     pub struct Document {
         pub id: String,
         pub name: String,
+    }
+
+
+    pub struct DocumentContainer {}
+
+    impl DocumentContainer {
+        pub fn build(cx: &mut Context) {
+
+        }
     }
 }
 
@@ -35,7 +44,15 @@ mod tabbed_ui {
                     Element::new(cx).class("indicator");
                 },
                 |cx| {
-                    Element::new(cx).size(Percentage(100.0)).background_color(Color::rgb(0xbb, 0xbb, 0xbb));
+                    ScrollView::new(cx, 0.0, 0.0, false, true, |cx| {
+                        VStack::new(cx, |cx|{
+                            Label::new(cx, "🏠 Home")
+                                .text_align(TextAlign::Center);
+                        }).child_space(Stretch(1.0));
+                    })
+                        .background_color(Color::rgb(0xbb, 0xbb, 0xbb))
+                        .height(Percentage(100.0))
+                        .width(Percentage(100.0));
                 },
             );
 
