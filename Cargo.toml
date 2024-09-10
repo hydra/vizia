@@ -339,3 +339,7 @@ path = "examples/views/svg.rs"
 [[example]]
 name = "debug"
 path = "examples/debug.rs"
+
+[[example]]
+name = "tabbed_document"
+path = "examples/tabbed_document.rs"
