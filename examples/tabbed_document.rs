@@ -5,10 +5,12 @@ use crate::document::Document;
 use crate::tabbed_ui::{DocumentTab, HomeTab, TabKind};
 
 mod document {
+    use std::thread::sleep;
     use vizia::prelude::*;
 
     enum DocumentEvent {
-        Load { id: String }
+        Load { id: String },
+        Loaded { content: String }
     }
 
     #[derive(Clone, Data, Lens)]
@@ -23,10 +25,14 @@ mod document {
     }
 
     impl DocumentContent {
-        // TODO Ensure this is called every time the tab is selected
-        pub fn load(&mut self, id: &String) {
-            // TODO somehow load the document content, e.g. from file.
-            self.content.replace(format!("content for {}", &id));
+        pub fn load(&mut self, cx: &mut EventContext, id: &String) {
+            // Simulate loading a file, slowly.
+            let id = id.clone();
+            cx.spawn(move |cp|{
+                sleep(Duration::from_secs(1));
+                let content = format!("content for {}", id);
+                cp.emit(DocumentEvent::Loaded { content }).expect("not broken");
+            });
         }
     }
 
@@ -37,11 +43,14 @@ mod document {
     }
 
     impl View for DocumentContainer {
-        fn event(&mut self, _cx: &mut EventContext, event: &mut Event) {
-            event.map(|event, meta| {
+        fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
+            event.take(|event, meta| {
                 match event {
                     DocumentEvent::Load { id } => {
-                        self.content.load(id);
+                        self.content.load(cx, &id);
+                    }
+                    DocumentEvent::Loaded { content} => {
+                        self.content.content.replace(content);
                     }
                 }
             })
