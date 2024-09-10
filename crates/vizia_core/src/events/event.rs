@@ -27,8 +27,8 @@ pub struct Event {
 }
 
 impl Debug for Event {
-    fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Ok(())
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "meta: {:?}", self.meta)
     }
 }
 
