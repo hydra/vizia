@@ -1,13 +1,17 @@
 mod helpers;
 pub use helpers::*;
 use vizia::prelude::*;
-use crate::document::{Document, DocumentContainer};
+use crate::document::Document;
 use crate::tabbed_ui::{DocumentTab, HomeTab, TabKind};
 
 mod document {
     use vizia::prelude::*;
 
-    #[derive(Clone, Data)]
+    enum DocumentEvent {
+        Load { id: String }
+    }
+
+    #[derive(Clone, Data, Lens)]
     pub struct Document {
         pub id: String,
         pub name: String,
@@ -26,24 +30,41 @@ mod document {
         }
     }
 
-    #[derive(Clone, Data, Lens)]
+    #[derive(Clone, Lens)]
     pub struct DocumentContainer {
         pub document: Document,
+        pub content: DocumentContent,
     }
 
-    impl View for DocumentContainer {}
+    impl View for DocumentContainer {
+        fn event(&mut self, _cx: &mut EventContext, event: &mut Event) {
+            event.map(|event, meta| {
+                match event {
+                    DocumentEvent::Load { id } => {
+                        self.content.load(id);
+                    }
+                }
+            })
+        }
+    }
 
     impl DocumentContainer {
         pub fn new(cx: &mut Context, document: Document) -> Handle<Self> {
+            let id = document.id.clone();
+
             Self {
-                document
+                document,
+                content: DocumentContent::default()
             }.build(cx, |cx| {
                 VStack::new(cx, |cx| {
-                    Label::new(cx, DocumentContent::content.map(move |maybe_content| {
-                        maybe_content.clone().unwrap_or("Loading...".to_string())
+
+                    Label::new(cx, DocumentContainer::content.map(move |content| {
+                        content.content.clone().unwrap_or("Loading...".to_string())
                     }))
                         .text_align(TextAlign::Center);
                 }).child_space(Stretch(1.0));
+            }).on_build(move |ecx| {
+                ecx.emit(DocumentEvent::Load { id: id.clone() })
             })
         }
     }
@@ -51,8 +72,7 @@ mod document {
 
 mod tabbed_ui {
     use vizia::prelude::*;
-    use crate::document::document_container_derived_lenses::document;
-    use crate::document::DocumentContainer;
+    use crate::document::{Document, DocumentContainer};
 
     #[derive(Clone, Data)]
     pub enum TabKind {
@@ -62,19 +82,22 @@ mod tabbed_ui {
 
     #[derive(Clone, Data)]
     pub struct DocumentTab {
-        pub container: DocumentContainer,
+        pub document: Document,
     }
 
     impl DocumentTab {
-        pub fn build_tab(&self, name: String) -> TabPair {
+        pub fn build_tab(document: Document) -> TabPair {
+            let name = document.name.clone();
+
             let tab = TabPair::new(
                 move |cx| {
                     Label::new(cx, name.clone()).hoverable(false);
                     Element::new(cx).class("indicator");
                 },
-                |cx| {
-                    ScrollView::new(cx, 0.0, 0.0, false, true, |cx| {
-                        DocumentContainer::new(cx, self.container.document.clone());
+                move |cx| {
+                    let document_for_scrollview = document.clone();
+                    ScrollView::new(cx, 0.0, 0.0, false, true, move |cx| {
+                        DocumentContainer::new(cx, document_for_scrollview.clone());
                     })
                         .background_color(Color::rgb(0xdd, 0xdd, 0xdd))
                         .height(Percentage(100.0))
@@ -117,14 +140,14 @@ mod tabbed_ui {
         pub fn name(&self) -> String {
             match self {
                 TabKind::Home(_) => { "Home".to_string() }
-                TabKind::Document(document_tab) => { document_tab.container.document.name.clone() }
+                TabKind::Document(document_tab) => { document_tab.document.name.clone() }
             }
         }
 
         pub fn build_tab(&self) -> TabPair {
             match self {
                 TabKind::Home(tab) => tab.build_tab(self.name()),
-                TabKind::Document(tab) => tab.build_tab(self.name()),
+                TabKind::Document(tab) => DocumentTab::build_tab(tab.document.clone()),
             }
         }
     }
@@ -140,14 +163,10 @@ impl AppData {
         self.tabs.extend(vec![
             TabKind::Home( HomeTab {} ),
             TabKind::Document( DocumentTab {
-                container: DocumentContainer {
-                    document: Document { id: "document_1".to_string(), name: "Document 1".to_string() }
-                }
+                document: Document { id: "document_1".to_string(), name: "Document 1".to_string() },
             }),
             TabKind::Document( DocumentTab {
-                container: DocumentContainer {
-                    document: Document { id: "document_2".to_string(), name: "Document 2".to_string() }
-                }
+                document: Document { id: "document_2".to_string(), name: "Document 2".to_string() },
             }),
         ]);
     }
