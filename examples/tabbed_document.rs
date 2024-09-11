@@ -4,16 +4,23 @@ use log::trace;
 pub use helpers::*;
 use vizia::prelude::*;
 use crate::document::Document;
+use crate::route::Route;
 use crate::tabbed_ui::{DocumentTab, HomeTab, TabKind};
 
 mod document {
     use std::thread::sleep;
     use vizia::prelude::*;
+    use crate::Route;
 
     #[derive(Debug)]
     enum DocumentEvent {
         Load { id: String },
         Loaded { content: DocumentContent }
+    }
+
+    #[derive(Debug)]
+    pub enum DocumentRouteEvent {
+        RouteChanged { document_id: String, route: Route }
     }
 
     #[derive(Clone, Data, Lens)]
@@ -33,7 +40,7 @@ mod document {
             // Simulate loading a file, slowly.
             let id = id.clone();
             cx.spawn(move |cp|{
-                sleep(Duration::from_secs(1));
+                sleep(Duration::from_millis(250));
                 let content = format!("content for {}", id);
                 let document_content = DocumentContent {
                     content: Some(content),
@@ -64,7 +71,10 @@ mod document {
                 println!("section event: {:?}", &event);
                 match event {
                     SectionEvent::Change { index } => {
+
                         self.active_section.replace(index);
+
+                        cx.emit(DocumentRouteEvent::RouteChanged { document_id: self.document.id.clone(), route: Route(Some(index)) })
                     }
                 }
             });
@@ -83,13 +93,13 @@ mod document {
     }
 
     impl DocumentContainer {
-        pub fn new(cx: &mut Context, document: Document) -> Handle<Self> {
+        pub fn new(cx: &mut Context, document: Document, active_section: Option<usize>) -> Handle<Self> {
             let id = document.id.clone();
 
             Self {
                 document,
                 content: DocumentContent::default(),
-                active_section: None,
+                active_section,
             }.build(cx, |cx| {
 
                 HStack::new(cx, | cx | {
@@ -160,9 +170,17 @@ mod document {
     }
 }
 
+mod route {
+    use vizia::prelude::Data;
+
+    #[derive(Clone, Debug, Data)]
+    pub struct Route(pub Option<usize>);
+}
+
 mod tabbed_ui {
     use vizia::prelude::*;
-    use crate::document::{Document, DocumentContainer};
+    use crate::document::{Document, DocumentContainer, DocumentRouteEvent};
+    use crate::route::Route;
 
     #[derive(Clone, Data)]
     pub enum TabKind {
@@ -173,12 +191,14 @@ mod tabbed_ui {
     #[derive(Clone, Data)]
     pub struct DocumentTab {
         pub document: Document,
+        pub route: Route,
     }
 
     impl DocumentTab {
         pub fn build_tab(&self) -> TabPair {
             let document = self.document.clone();
             let name = document.name.clone();
+            let active_section = self.route.0.clone();
 
             let tab = TabPair::new(
                 move |cx| {
@@ -188,7 +208,7 @@ mod tabbed_ui {
                 move |cx| {
                     let document_for_scrollview = document.clone();
                     ScrollView::new(cx, 0.0, 0.0, false, true, move |cx| {
-                        DocumentContainer::new(cx, document_for_scrollview.clone());
+                        DocumentContainer::new(cx, document_for_scrollview.clone(), active_section);
                     })
                         .background_color(Color::rgb(0xdd, 0xdd, 0xdd))
                         .height(Percentage(100.0))
@@ -198,10 +218,25 @@ mod tabbed_ui {
 
             tab
         }
+
+        pub fn event(&mut self, _cx: &mut EventContext, event: &mut Event) {
+            event.map(|event, _meta| {
+                println!("section event: {:?}", &event);
+                match event {
+                    DocumentRouteEvent::RouteChanged { document_id, route } => {
+                        if document_id.eq(&self.document.id) {
+                            self.route = route.clone()
+                        }
+                    }
+                }
+            });
+        }
     }
 
     #[derive(Clone, Data)]
-    pub struct HomeTab {}
+    pub struct HomeTab {
+        pub route: Route,
+    }
 
     impl HomeTab {
         pub fn build_tab(&self, name: String) -> TabPair {
@@ -225,6 +260,10 @@ mod tabbed_ui {
 
             tab
         }
+
+        pub fn event(&mut self, _cx: &mut EventContext, _event: &mut Event) {
+            // nothing to do
+        }
     }
 
     impl TabKind {
@@ -241,32 +280,54 @@ mod tabbed_ui {
                 TabKind::Document(tab) => tab.build_tab(),
             }
         }
+
+        pub fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
+            match self {
+                TabKind::Home(tab) => tab.event(cx, event),
+                TabKind::Document(tab) => tab.event(cx, event)
+            }
+        }
+    }
+}
+
+#[derive(Lens)]
+pub struct MultiDocumentContainer {
+    tabs: Vec<TabKind>,
+}
+
+impl View for MultiDocumentContainer {
+    fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
+        trace!("event: {:?}", &event);
+        for tab in self.tabs.iter_mut() {
+            tab.event(cx, event);
+        }
+    }
+}
+
+impl MultiDocumentContainer {
+    pub fn new(cx: &mut Context, tabs: Vec<TabKind>) -> Handle<Self> {
+        Self {
+            tabs,
+        }.build(cx, |cx| {
+            TabView::new(cx, MultiDocumentContainer::tabs, |cx, tab_kind_lens| {
+                tab_kind_lens.get(cx).build_tab()
+            })
+                .width(Percentage(100.0))
+                .height(Percentage(100.0));
+        })
     }
 }
 
 #[derive(Lens, Default)]
 pub struct AppData {
-    tabs: Vec<TabKind>,
 }
 
 impl AppData {
-    pub fn create_tabs(&mut self) {
-        self.tabs.extend(vec![
-            TabKind::Home( HomeTab {} ),
-            TabKind::Document( DocumentTab {
-                document: Document { id: "document_1".to_string(), name: "Document 1".to_string() },
-            }),
-            TabKind::Document( DocumentTab {
-                document: Document { id: "document_2".to_string(), name: "Document 2".to_string() },
-            }),
-        ]);
-    }
 }
 
 impl Model for AppData {
 
-    fn event(&mut self, _cx: &mut EventContext, event: &mut Event) {
-        trace!("event: {:?}", &event);
+    fn event(&mut self, _cx: &mut EventContext, _event: &mut Event) {
     }
 }
 
@@ -274,18 +335,33 @@ fn main() -> Result<(), ApplicationError> {
 
     Application::new(|cx| {
 
-        let mut app_data = AppData::default();
-        app_data.create_tabs();
+        let app_data = AppData::default();
         app_data.build(cx);
 
         ExamplePage::new(cx, |cx| {
-            TabView::new(cx, AppData::tabs, |cx, tab_kind_lens| {
-                tab_kind_lens.get(cx).build_tab()
-            })
+            MultiDocumentContainer::new(cx, create_tabs())
                 .width(Percentage(100.0))
                 .height(Percentage(100.0));
+
         });
     })
         .title("Tabview")
         .run()
 }
+
+pub fn create_tabs() -> Vec<TabKind>{
+    vec![
+        TabKind::Home( HomeTab {
+            route: Route(None)
+        } ),
+        TabKind::Document( DocumentTab {
+            document: Document { id: "document_1".to_string(), name: "Document 1".to_string() },
+            route: Route(None),
+        }),
+        TabKind::Document( DocumentTab {
+            document: Document { id: "document_2".to_string(), name: "Document 2".to_string() },
+            route: Route(None),
+        }),
+    ]
+}
+
