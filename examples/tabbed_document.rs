@@ -1,4 +1,6 @@
 mod helpers;
+
+use log::trace;
 pub use helpers::*;
 use vizia::prelude::*;
 use crate::document::Document;
@@ -8,6 +10,7 @@ mod document {
     use std::thread::sleep;
     use vizia::prelude::*;
 
+    #[derive(Debug)]
     enum DocumentEvent {
         Load { id: String },
         Loaded { content: String }
@@ -31,7 +34,11 @@ mod document {
             cx.spawn(move |cp|{
                 sleep(Duration::from_secs(1));
                 let content = format!("content for {}", id);
-                cp.emit(DocumentEvent::Loaded { content }).expect("not broken");
+                let result = cp.emit(DocumentEvent::Loaded { content });
+                match result {
+                    Ok(_) => println!("emitted content, id: {}", id),
+                    Err(e) => println!("failed to emit content, id: {}, error: {}", id, e),
+                }
             });
         }
     }
@@ -44,7 +51,8 @@ mod document {
 
     impl View for DocumentContainer {
         fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
-            event.take(|event, meta| {
+            event.take(|event, _meta| {
+                println!("event: {:?}", &event);
                 match event {
                     DocumentEvent::Load { id } => {
                         self.content.load(cx, &id);
@@ -95,7 +103,8 @@ mod tabbed_ui {
     }
 
     impl DocumentTab {
-        pub fn build_tab(document: Document) -> TabPair {
+        pub fn build_tab(&self) -> TabPair {
+            let document = self.document.clone();
             let name = document.name.clone();
 
             let tab = TabPair::new(
@@ -156,7 +165,7 @@ mod tabbed_ui {
         pub fn build_tab(&self) -> TabPair {
             match self {
                 TabKind::Home(tab) => tab.build_tab(self.name()),
-                TabKind::Document(tab) => DocumentTab::build_tab(tab.document.clone()),
+                TabKind::Document(tab) => tab.build_tab(),
             }
         }
     }
@@ -184,12 +193,7 @@ impl AppData {
 impl Model for AppData {
 
     fn event(&mut self, _cx: &mut EventContext, event: &mut Event) {
-        println!("event: {:?}", &event);
-        event.map(|app_event, _meta| match app_event {
-            TabEvent::SetSelected(id) => {
-                println!("id: {}", id);
-            }
-        });
+        trace!("event: {:?}", &event);
     }
 }
 
