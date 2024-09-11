@@ -13,7 +13,7 @@ mod document {
     #[derive(Debug)]
     enum DocumentEvent {
         Load { id: String },
-        Loaded { content: String }
+        Loaded { content: DocumentContent }
     }
 
     #[derive(Clone, Data, Lens)]
@@ -22,9 +22,10 @@ mod document {
         pub name: String,
     }
 
-    #[derive(Clone, Lens, Default)]
+    #[derive(Clone, Lens, Default, Debug)]
     pub struct DocumentContent {
-        pub content: Option<String>
+        pub content: Option<String>,
+        pub sections: Vec<String>,
     }
 
     impl DocumentContent {
@@ -34,7 +35,14 @@ mod document {
             cx.spawn(move |cp|{
                 sleep(Duration::from_secs(1));
                 let content = format!("content for {}", id);
-                let result = cp.emit(DocumentEvent::Loaded { content });
+                let document_content = DocumentContent {
+                    content: Some(content),
+                    sections: vec![
+                        "Section 1".to_string(),
+                        "Section 2".to_string(),
+                    ],
+                };
+                let result = cp.emit(DocumentEvent::Loaded { content: document_content });
                 match result {
                     Ok(_) => println!("emitted content, id: {}", id),
                     Err(e) => println!("failed to emit content, id: {}, error: {}", id, e),
@@ -47,18 +55,27 @@ mod document {
     pub struct DocumentContainer {
         pub document: Document,
         pub content: DocumentContent,
+        pub active_section: Option<usize>,
     }
 
     impl View for DocumentContainer {
         fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
             event.take(|event, _meta| {
-                println!("event: {:?}", &event);
+                println!("section event: {:?}", &event);
+                match event {
+                    SectionEvent::Change { index } => {
+                        self.active_section.replace(index);
+                    }
+                }
+            });
+            event.take(|event, _meta| {
+                println!("document event: {:?}", &event);
                 match event {
                     DocumentEvent::Load { id } => {
                         self.content.load(cx, &id);
                     }
                     DocumentEvent::Loaded { content} => {
-                        self.content.content.replace(content);
+                        self.content = content;
                     }
                 }
             })
@@ -71,19 +88,75 @@ mod document {
 
             Self {
                 document,
-                content: DocumentContent::default()
+                content: DocumentContent::default(),
+                active_section: None,
             }.build(cx, |cx| {
-                VStack::new(cx, |cx| {
 
-                    Label::new(cx, DocumentContainer::content.map(move |content| {
-                        content.content.clone().unwrap_or("Loading...".to_string())
-                    }))
-                        .text_align(TextAlign::Center);
-                }).child_space(Stretch(1.0));
+                HStack::new(cx, | cx | {
+                    //
+                    // Left
+                    //
+                    VStack::new(cx, |cx| {
+                        let sections_lens = DocumentContainer::content.then(DocumentContent::sections);
+
+                        List::new(cx, sections_lens, |cx, index, item| {
+
+                            let foo = DocumentContainer::active_section.map(move |selection|{
+                                let selected = match selection {
+                                    Some(active_index) if *active_index == index => true,
+                                    _ => false
+                                };
+
+                                println!("index: {}, selected: {}", index, selected);
+                                selected
+                            });
+
+                            Label::new(cx, item).hoverable(false)
+                                .background_color(foo.map(|foobar| match *foobar {
+                                    true => Color::rgb(0x00, 0x00, 0xff),
+                                    false => Color::rgb(0xdd, 0xdd, 0xdd),
+                                }))
+                                .width(Stretch(1.0))
+                                .height(Pixels(30.0))
+                                .checked(foo)
+                                .on_press(move |ecx|ecx.emit(SectionEvent::Change { index }));
+                        })
+                            .child_space(Pixels(4.0));
+                    })
+                        .width(Pixels(200.0))
+                        .height(Percentage(100.0));
+
+                    //
+                    // Divider
+                    //
+                    Element::new(cx)
+                        .width(Pixels(2.0))
+                        .height(Percentage(100.0))
+                        .background_color(Color::gray());
+
+                    //
+                    // Right
+                    //
+                    VStack::new(cx, |cx| {
+
+                        Label::new(cx, DocumentContainer::content.map(move |content| {
+                            content.content.clone().unwrap_or("Loading...".to_string())
+                        }))
+                            .text_align(TextAlign::Center);
+                    })
+                        .child_space(Stretch(1.0));
+
+                });
+
             }).on_build(move |ecx| {
                 ecx.emit(DocumentEvent::Load { id: id.clone() })
             })
         }
+    }
+
+    #[derive(Debug)]
+    enum SectionEvent {
+        Change { index: usize }
     }
 }
 
