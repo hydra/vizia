@@ -41,15 +41,25 @@ mod document {
             let id = id.clone();
             cx.spawn(move |cp|{
                 sleep(Duration::from_millis(250));
-                let content = format!("content for {}", id);
-                let document_content = DocumentContent {
-                    content: Some(content),
-                    sections: vec![
-                        "Section 1".to_string(),
-                        "Section 2".to_string(),
-                    ],
+
+                let content = match id.as_str() {
+                    "document_1" => DocumentContent {
+                        content: Some("content for document 1".to_string()),
+                        sections: vec![
+                            "Section 4".to_string(),
+                            "Section 2".to_string(),
+                        ],
+                    },
+                    "document_2" => DocumentContent {
+                        content: Some("content for document 1".to_string()),
+                        sections: vec![
+                            "Section 6".to_string(),
+                            "Section 9".to_string(),
+                        ],
+                    },
+                    _ => unreachable!()
                 };
-                let result = cp.emit(DocumentEvent::Loaded { content: document_content });
+                let result = cp.emit(DocumentEvent::Loaded { content });
                 match result {
                     Ok(_) => println!("emitted content, id: {}", id),
                     Err(e) => println!("failed to emit content, id: {}, error: {}", id, e),
