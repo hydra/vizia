@@ -7,3 +7,4 @@ emails =
        *[other] You have { $unread_emails } unread emails.
     }
 refresh = Refresh
+window-title = Localization
