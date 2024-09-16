@@ -84,6 +84,6 @@ fn main() -> Result<(), ApplicationError> {
         .row_between(Pixels(10.0))
         .space(Pixels(10.0));
     })
-    .title("Localization")
+    .title(Localized::new("window-title"))
     .run()
 }

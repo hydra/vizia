@@ -7,6 +7,7 @@ emails =
        *[other] Vous avez { $unread_emails } e-mails non lus.
     }
 refresh = Actualiser la page
+window-title = Localisation
 
 January = Janvier
 February = Février
